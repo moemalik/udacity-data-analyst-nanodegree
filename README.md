@@ -1,2 +1,2 @@
-# udacity-data-analyst-nanodegree
-Projects for the Udacity Data Analyst Nanodegree
+# Udacity Data Analyst Nanodegree
+My projects for the [Udacity Data Analyst Nanodegree](https://www.udacity.com/course/data-analyst-nanodegree--nd002).
