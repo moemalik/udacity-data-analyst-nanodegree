@@ -73,7 +73,8 @@ To ensure we'll be able to accurately analyze the relationship between IMDb scor
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 
-imdb.2 <- subset(imdb, content_rating %in% c('G', 'GP', 'M', 'NC-17', 'PG', 'PG-13', 'R', 'X'))
+imdb.2 <- subset(imdb, content_rating %in% c('G', 'GP', 'M', 'NC-17', 'PG', 
+                                             'PG-13', 'R', 'X'))
 
 imdb.2$content_rating <- factor(imdb.2$content_rating)
 
@@ -138,7 +139,8 @@ The size of the outliers are resulting in a highly skewed distribution. In order
 
 ggplot(aes(x=num_voted_users), data=imdb.2) +
   geom_histogram(aes(color = I('black'), fill = I('#099DD9'))) +
-  scale_x_log10(breaks = c(100, 1000, 10000, 50000, 150000, 1000000), labels = c(100, 1000, 10000, 50000, 100000, 1000000))
+  scale_x_log10(breaks = c(100, 1000, 10000, 50000, 150000, 1000000), 
+                labels = c(100, 1000, 10000, 50000, 100000, 1000000))
 
 
 ```
@@ -153,7 +155,8 @@ summary(imdb.2$budget)
 
 ggplot(aes(x=budget), data=imdb.2) +
   geom_histogram(aes(color = I('black'), fill = I('#099DD9'))) +
-  scale_x_continuous(limit=c(min(imdb$budget)-1, quantile(imdb$budget, probs=0.99, na.rm=TRUE)))
+  scale_x_continuous(limit=c(min(imdb$budget)-1, 
+                             quantile(imdb$budget, probs=0.99, na.rm=TRUE)))
 
 
 
@@ -166,7 +169,8 @@ I removed the top .1% of the data due to the size of the outlier (12,220,000,000
 
 ggplot(aes(x=budget), data=imdb.2) +
   geom_histogram(aes(color = I('black'), fill = I('#099DD9'))) +
-  scale_x_log10(breaks = c(10000, 1000000, 20000000, 1000000000), labels = c(10000, 1000000, 20000000, 1000000000))
+  scale_x_log10(breaks = c(10000, 1000000, 20000000, 1000000000), 
+                labels = c(10000, 1000000, 20000000, 1000000000))
 
 
 ```
@@ -182,7 +186,8 @@ summary(imdb.2$gross)
 
 ggplot(aes(x=gross), data=imdb.2) +
   geom_histogram(aes(color = I('black'), fill = I('#099DD9'))) +
-  scale_x_continuous(limit=c(0, quantile(imdb.2$gross, probs=0.99, na.rm = TRUE)))
+  scale_x_continuous(limit=c(0, 
+                             quantile(imdb.2$gross, probs=0.99, na.rm = TRUE)))
 
 ```
 
@@ -194,7 +199,8 @@ Similarly to the budget distribution, removing the top .1% of the data to decrea
 
 ggplot(aes(x=gross), data=imdb.2) +
   geom_histogram(aes(color = I('black'), fill = I('#099DD9'))) +
-  scale_x_log10(breaks = c(1000, 10000, 10000000, 60000000, 1000000000), labels = c(1000, 10000, 10000000, 60000000, 1000000000)) 
+  scale_x_log10(breaks = c(1000, 10000, 10000000, 60000000, 1000000000), 
+                labels = c(1000, 10000, 10000000, 60000000, 1000000000)) 
 
 ```
 
@@ -209,13 +215,24 @@ summary(imdb.2$num_critic_for_reviews)
 
 ggplot(aes(x=num_critic_for_reviews), data=imdb.2) +
   geom_histogram(aes(color = I('black'), fill = I('#099DD9'))) +
-  scale_x_continuous(breaks=seq(0, quantile(imdb.2$num_critic_for_reviews, probs=0.99, na.rm=TRUE), 50), limit=c(0, quantile(imdb.2$num_critic_for_reviews, probs=0.99, na.rm=TRUE)))
+  scale_x_continuous(breaks=seq(0,813,50))
 
 ```
 
-After removing the top .1% of data, we have a positively skewed distribution of number of reviews from critics. The median is 110 reviews.
+We have a positively skewed distribution of number of reviews from critics. The median is 123 reviews.
 
 Let's now take a look at the duration (the length of film).
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(aes(x=duration), data=imdb.2) +
+  geom_histogram(aes(color = I('black'), fill = I('#099DD9')))
+
+
+```
+
+Let's remove the top 1% of the data to get a better look at the distribution. A log transformatio won't be needed.
 
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
@@ -224,11 +241,37 @@ summary(imdb.2$duration)
 
 ggplot(aes(x=duration), data=imdb.2) +
   geom_histogram(aes(color = I('black'), fill = I('#099DD9'))) +
-  scale_x_continuous(breaks=seq(0, quantile(imdb.2$duration, probs=0.99, na.rm = TRUE), 10), limit=c(0, quantile(imdb.2$duration, probs=0.99, na.rm = TRUE)))
+  scale_x_continuous(breaks=seq(0, 
+          quantile(imdb.2$duration, probs=0.99, na.rm = TRUE), 10), 
+          limit=c(0, quantile(imdb.2$duration, probs=0.99, na.rm = TRUE)))
 
 ```
 
-Removed the top 1% of data here as well. No log transformation here needed - we have a normal distribution that gives a clear idea of the distribution of running times. The median duration is 104 minutes.
+We have a normal distribution that gives a clear idea of the distribution of running times. The median duration is 104 minutes.
+
+However, to enhance our analysis later in this project, I want to bucket duration times into a couple groups.
+
+1. 0 - 60 minutes = short
+2. 60 - 120 minutes = regular
+3. 120 - 180 minutes = long
+4. 180 - 330 (max value) minutes = very long
+
+Let's do that and see the count of each.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
+breaks_format <- c(37, 60, 120, 180, 330) #This creates the buckets that we 
+#want for the categorization
+
+imdb.2$duration.group <- cut(imdb.2$duration, breaks_format, 
+                             labels=c("short", "regular", "long", "very long"))
+
+summary(imdb.2$duration.group)
+
+
+```
+
+So we see a majority of the films (3451) land in the 60-120 minute "regular" category", but still a sizable chunk (913) land in the 120-180 minute "long"" category. 
 
 What countries are these films coming from?
 
@@ -264,7 +307,6 @@ names(rating_counts) <- c('content_rating', 'count')
 ggplot(aes(x=content_rating, y = count), data = tail(rating_counts, 20)) +
   geom_bar(stat = 'identity') +
   coord_flip()
-
 
 
 
@@ -321,7 +363,11 @@ Let's start off this section with a corr plot. We'll look at the correlation bet
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 
-correlations <- cor(imdb.2[,c('imdb_score', 'director_facebook_likes', 'cast_total_facebook_likes', 'num_critic_for_reviews', 'duration', 'num_voted_users', 'actor_1_facebook_likes', 'actor_2_facebook_likes', 'actor_3_facebook_likes', 'movie_facebook_likes', 'facenumber_in_poster', 'title_year', 'gross', 'budget')], use="pairwise.complete.obs")
+correlations <- cor(imdb.2[,c('imdb_score', 'director_facebook_likes', 
+'cast_total_facebook_likes', 'num_critic_for_reviews', 'duration', 
+'num_voted_users', 'actor_1_facebook_likes', 'actor_2_facebook_likes', 
+'actor_3_facebook_likes', 'movie_facebook_likes', 'facenumber_in_poster', 
+'title_year', 'gross', 'budget')], use="pairwise.complete.obs")
 
 # Correlation values
 #correlations
@@ -360,13 +406,14 @@ ggplot(aes(x=title_year, y = imdb_score), data = imdb.2) +
 
 ```
 
-The negative correlation between imdb_score and title_year that we saw in the corr plot is shown here. As we go forward in time, the median IMDb score appears to drop slightly. Again, this could be due to the fact there are more movies being produced now then there 20+ years. Thus, we're seeing greater instances of bad to average films, and as a result a lower IMDb score median. The downward trend of the line always captures the negative (but weak) correlation.
+The negative correlation between imdb_score and title_year that we saw in the corr plot is shown here. Again, this could be due to the fact there are more movies being produced now then there were 20+ years ago. Thus, we're seeing greater instances of bad to average films, and as a result a downtrend in IMDb scores, which is reflected by the line. 
 
 Let's visualize the relationship between content ratings and IMDb scores and see if there's a pattern.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 
-content_ratings_medians <- reorder(imdb.2$content_rating, -imdb.2$imdb_score, median)
+content_ratings_medians <- reorder(imdb.2$content_rating, -imdb.2$imdb_score, 
+                                   median)
 
 boxplot(imdb_score ~ content_ratings_medians, data=imdb.2, lwd=1.0, las = 2)
 
@@ -383,7 +430,7 @@ The box plot is ordered from the largest median value to the smallest. Two obser
 
 We'll output another box plot to see the relationship between country and IMDb score. Do countries generally tend to perform the same, or are there some countries is noticeably lower or higher IMDb scores relative to the rest of the world?
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r echo=FALSE, message=FALSE, fig.height=6, fig.width=12, warning=FALSE}
 
 country_medians <- reorder(imdb.2$country, -imdb.2$imdb_score, median)
 boxplot(imdb_score ~ country_medians, data=imdb.2, lwd=1.0, las = 2)
@@ -418,7 +465,8 @@ We'll see how imdb_score correlate with budget.
 
 ggplot(aes(x=budget, y = imdb_score), data = imdb.2) +
   geom_point(alpha=1/5) +
-  scale_x_continuous(limits = c(0, quantile(imdb.2$budget, probs=0.99, na.rm = TRUE))) +
+  scale_x_continuous(limits = c(0, 
+        quantile(imdb.2$budget, probs=0.99, na.rm = TRUE))) +
   geom_smooth()
 
 ```
@@ -431,7 +479,8 @@ Let's move on to gross and imdb_score.
 
 ggplot(aes(x=gross, y = imdb_score), data = imdb.2) +
   geom_point(alpha=1/5) +
-  scale_x_continuous(limits = c(0, quantile(imdb.2$gross, probs=0.99, na.rm = TRUE))) + 
+  scale_x_continuous(limits = c(0, 
+      quantile(imdb.2$gross, probs=0.99, na.rm = TRUE))) + 
   geom_smooth()
 
 ```
@@ -486,23 +535,19 @@ While I didn't investigate this with a scatter plot, the corr plot analysis at t
 # Multivariate Plots
 
 
-We know that duration and number of votes users are positively correlated (0.35), so let's see how adding in duration as color to the num_voted_use/imdb_score plot looks.
+We know that duration and number of voted users are positively correlated (0.35), so let's see how adding in duration as color to the num_voted_use/imdb_score plot looks.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 
-#  scale_colour_gradientn(colours=rainbow(4)) adds color
-
-#Num_Voted_Users / Duration
-
-ggplot(aes(x=num_voted_users, y = imdb_score), data = subset(imdb.2, duration > quantile(duration, 0.01, na.rm=TRUE) & duration < quantile(duration, 0.95, na.rm = TRUE) )) +
-  geom_point(aes(color=duration)) +
-  scale_x_continuous(limits = c(0, quantile(imdb.2$num_voted_users, probs=0.99, na.rm = TRUE))) +
-  scale_colour_gradientn(colours=rainbow(4))
+ggplot(aes(x=num_voted_users, y = imdb_score), data = subset(imdb.2, !is.na(duration.group))) +
+  geom_point(aes(color=duration.group)) +
+  scale_x_continuous(breaks = seq(0, 1690000, 250000)) +
+  scale_y_continuous(breaks = seq(0, 9.3, 0.5))
 
 
 ```
 
-We can see their correlation here - duration generally increases with number of users who have voted. Additionally, you can see the correlation between duration and imdb_scores.
+We can see their correlation here - duration generally increases with number of users who have voted. As the chart crosses the 250,000 mark for number of voted users, we increasingly see almost excluively "long" and "very long" films. Additionally, you can see the correlation between duration and imdb_scores, with long and very long films appearing mostly in the 6.0 and above portion of the chart.
 
 Let's replace duration with the number of Facebook likes a movie has as the third variable.
 
@@ -510,9 +555,11 @@ Let's replace duration with the number of Facebook likes a movie has as the thir
 
 #Num_Voted_Users / Movie Facebook Likes
 
-ggplot(aes(x=num_voted_users, y = imdb_score), data = subset(imdb.2, movie_facebook_likes <= quantile(movie_facebook_likes, 0.95))) +
+ggplot(aes(x=num_voted_users, y = imdb_score), data = subset(imdb.2, 
+              movie_facebook_likes <= quantile(movie_facebook_likes, 0.95))) +
   geom_point(aes(color=movie_facebook_likes)) +
-  scale_x_continuous(limits = c(0, quantile(imdb.2$num_voted_users, probs=0.99, na.rm = TRUE))) +
+  scale_x_continuous(limits = c(0, 
+                quantile(imdb.2$num_voted_users, probs=0.99, na.rm = TRUE))) +
   scale_colour_gradientn(colours=rainbow(4))
 
 ```
@@ -524,9 +571,11 @@ According to the corr plot we made earlier, the number of reviews from critics a
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 
-ggplot(aes(x=num_critic_for_reviews, y = imdb_score), data = subset(imdb.2, gross <= quantile(gross, 0.95, na.rm = TRUE))) +
+ggplot(aes(x=num_critic_for_reviews, y = imdb_score), data = subset(imdb.2, 
+                              gross <= quantile(gross, 0.95, na.rm = TRUE))) +
   geom_point(aes(color=gross)) +
-  scale_x_continuous(limits = c(0, quantile(imdb.2$num_critic_for_reviews, probs=0.99, na.rm = TRUE))) +
+  scale_x_continuous(limits = c(0, 
+         quantile(imdb.2$num_critic_for_reviews, probs=0.99, na.rm = TRUE))) +
   scale_colour_gradientn(colours=rainbow(4))
 
 
@@ -536,12 +585,14 @@ We can see gross' positively correlated relationship with both num_critic_for_re
 
 Earlier, we visualized the lack of correlation between budget and imdb_score. Is this relationship constant across all values of content_rating? Let's find out.
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r echo=FALSE, message=FALSE, fig.height=6, fig.width=12, warning=FALSE}
 
 ggplot(aes(x=budget, y = imdb_score), data = imdb.2) +
   geom_point() +
-  scale_x_continuous(limits = c(0, quantile(imdb.2$budget, probs=0.99, na.rm = TRUE))) + 
+  scale_x_continuous(limits = c(0, quantile(imdb.2$budget, probs=0.99, 
+                                            na.rm = TRUE))) + 
   geom_smooth() +
+  theme_bw() +
   facet_wrap(~ content_rating, ncol = 3)
 
 
@@ -551,10 +602,11 @@ It appears the relationship between budget and imdb_scores is consistent across 
 
 Finally, let's take a look again at the relationship between imdb_score and title_year, but broken down by content_rating.
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r echo=FALSE, message=FALSE, fig.height=6, fig.width=12, warning=FALSE}
 
 ggplot(aes(x=title_year, y = imdb_score), data = imdb.2) +
-stat_summary(fun.y = mean, geom = 'line', shape = 4) +
+stat_summary(fun.y = median, geom = 'line', shape = 4) +
+  theme_bw() +
   facet_wrap(~ content_rating)
 
 
@@ -596,7 +648,8 @@ This histogram gives a normal but slightly negatively skewed distribution of IMD
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 
-ggplot(aes(x=num_voted_users, y = imdb_score), data = subset(imdb.2, num_voted_users < quantile(num_voted_users, probs = 0.99, na.rm=TRUE))) +
+ggplot(aes(x=num_voted_users, y = imdb_score), data = subset(imdb.2, 
+      num_voted_users < quantile(num_voted_users, probs = 0.99, na.rm=TRUE))) +
   geom_point(alpha=1/5) +
   geom_smooth() +
   labs(y = "IMDb Score", x = "Number of Voted Users") +
@@ -612,13 +665,14 @@ Number of voted users has the strongest correlation with IMDb scores, with a Pea
 
 ### Plot Three
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r echo=FALSE, message=FALSE, fig.height=6, fig.width=12, warning=FALSE}
 
 ggplot(aes(x=title_year, y = imdb_score), data = imdb.2) +
-stat_summary(fun.y = mean, geom = 'line', shape = 4) +
+stat_summary(fun.y = median, geom = 'line', shape = 4) +
+  theme_bw() +
   facet_wrap(~ content_rating) +
-  labs(y = "IMDb Score", x = "Year of Release") +
-  ggtitle("IMDb Score vs. Year of Release By Content Rating") +
+  labs(y = "Median IMDb Score", x = "Year of Release") +
+  ggtitle("Median IMDb Score vs. Year of Release By Content Rating") +
   theme(plot.title = element_text(hjust = 0.5))
 
 
