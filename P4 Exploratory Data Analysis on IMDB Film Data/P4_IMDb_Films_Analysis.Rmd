@@ -1,0 +1,647 @@
+---
+date: "March 19, 2017"
+output: html_document
+---
+
+IMDb Film Data Analysis by Mohamed Malik
+========================================================
+
+# Introduction
+
+IMDb - shorthand for the Internet Movie Database - is an online database of all things film, TV, and to a lesser extent, video games. The database has more than 4 million records of entertainment, along with almost 8 million records of the individuals who have worked on the content. Be it a silent film classic from the 1920s, or a video game dud from 2016, chances are you could find information about it on IMDb.com. As of March 12th 2017, it is 55th most popular website in the world. 
+
+Courtesy of [the IMDB 5000 Movie Dataset on Kaggle](https://www.kaggle.com/deepmatrix/imdb-5000-movie-dataset), we have access to data on 5000 film titles for analysis.
+
+What we're interested in exploring and investigating as we dive into the data is the following:
+
+What variables correlate with a low or high IMDb score? 
+
+IMDb scores are a rating of a given film, rated on a scale from 0.0 to 10.0. As per the IMDb FAQ, the rating is calculated by taking all the individual votes cast by registered IMDb users, and then calculating a weighted average (IMDb does not close how/when/why scores are weighted).
+
+As a big movie buff who use to have IMDb as his Firefox's homepage for 2 years, IMDb scores were at one point *the* way I determined whether a film was worth my time. In particular, I combed through the IMDb Top 250 every week - a list of the top 250 rated films on the website - looking for a new, quality film to watch. However, I never really took a close look if there were any characteristics were frequently shared among highly rated films. Analyzing this IMDb dataset from Kaggle is our chance to do just that.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+
+library(ggplot2)
+library(corrplot)
+library(gridExtra)
+library(dplyr)
+
+```
+
+```{r echo=FALSE, Load_the_Data}
+
+imdb <- read.csv('movie_metadata.csv')
+
+```
+
+# Data Summary and Wrangling
+
+Let's start off by taking a look at a summary of the dataset.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+summary(imdb)
+
+```
+
+Great. So we see the dataset has 5043 observations across 28 different film related variables. 
+
+Before we can continue with the analysis, there's some cleaning we should do.
+
+Regarding the content ratings, I noticed two things in the summary - there were 303 instances of apparently blank ratings, and that there were "Other" ratings not shown. Let's see what the "Other" consist of.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+table(imdb$content_rating)
+
+
+```
+
+It should be first noted that MPAA ratings for films you'd see in the cinema (in the United States) are G, PG, PG-13, R, and very rarely, NC-17. "GP", "M", and "X" are old MPAA ratings that preceded the current rating system. While outdated, they still give us a sense of what a film's content was so they should be kept. However, there are some problematic cases we should be aware of:
+
+1. It looks like the data included instances of TV ratings, meaning this data likely includes made-for-television movies - TV-Y, TV-Y7, TV-G, TV-PG, TV14, and TV-MA.
+
+2. 'Approved', 'Passed', "Not Rated", and 'Unrated' lacks information on a film's content.
+
+3. The films with a blank entry for rating. Looking up the films from the dataset with no rating on IMDb, I came across mainly television series and foreign films.
+
+To ensure we'll be able to accurately analyze the relationship between IMDb scores and content_ratings, we should remove the aforementioned problematic cases from the dataset.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+imdb.2 <- subset(imdb, content_rating %in% c('G', 'GP', 'M', 'NC-17', 'PG', 'PG-13', 'R', 'X'))
+
+imdb.2$content_rating <- factor(imdb.2$content_rating)
+
+table(imdb.2$content_rating)
+
+```
+
+Looks like we have only ratings related to theatrical films now.
+
+I also want to dive into one more categorical variable we'll be working with later during analysis - Country.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+table(imdb.2$country)
+```
+
+It looks as if we have several instances of countries with '0' for their value - This would have happened if rows that included these values as countries were removed with a subset. In this case, we'll have to re-factor the column like we did with content_ratings. Let's do that and then see how summary of the data looks again.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+imdb.2$country <- factor(imdb.2$country)
+table(imdb.2$country)
+```
+
+Refactoring the column removed the porblematic cases.
+
+The last concern that should be noted is that most of the columns include NA values. However, we'll deal with the NA values on a plot-by-plot basis. In some cases, the NA values won't show up (in the case of the histogram). In other cases where they might (such as a facet wrap), we'll remove them within the code for the plot.
+
+Now that we've finished data cleaning, let's start off the exploration with a univariate analysis of several of the variables.
+
+# Univariate Plots
+
+We'll first look at a histogram of IMDb scores.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+summary(imdb.2$imdb_score)
+
+ggplot(aes(x=imdb_score), data=imdb.2) +
+  geom_histogram(aes(color = I('black'), fill = I('#099DD9')), binwidth=0.25) +
+  scale_x_continuous(breaks=seq(0, max(imdb.2$imdb_score), 0.50))
+
+
+```
+
+It appears we have a normal distribution that is slightly negatively skewed. The peak is at an IMDb score of 6.5, which is the summary of the data shows to be the median. This is consistent with my experience of visiting the website frequently through out the years. Films in the 7.0 - 8.0 range are the films generally anyone could consider as a great movie, while the 8.0+ tier are what many would call as the all-time greats or classics. Films in that range are usually in the IMDb top 250 or right outside it.
+
+
+Let's take a look at a histogram of the number of users who voted for each film.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+summary(imdb.2$num_voted_users)
+
+ggplot(aes(x=num_voted_users), data=imdb.2) +
+  geom_histogram(aes(color = I('black'), fill = I('#099DD9')))
+
+
+```
+
+The size of the outliers are resulting in a highly skewed distribution. In order to reduce the skew and better see the distribution, we should apply a log transformation.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(aes(x=num_voted_users), data=imdb.2) +
+  geom_histogram(aes(color = I('black'), fill = I('#099DD9'))) +
+  scale_x_log10(breaks = c(100, 1000, 10000, 50000, 150000, 1000000), labels = c(100, 1000, 10000, 50000, 100000, 1000000))
+
+
+```
+
+The median number of users who voted - 42,390 - is much easier to see once we apply the transformation.
+
+Let's take a look at film budgets.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+summary(imdb.2$budget)
+
+ggplot(aes(x=budget), data=imdb.2) +
+  geom_histogram(aes(color = I('black'), fill = I('#099DD9'))) +
+  scale_x_continuous(limit=c(min(imdb$budget)-1, quantile(imdb$budget, probs=0.99, na.rm=TRUE)))
+
+
+
+
+```
+
+I removed the top .1% of the data due to the size of the outlier (12,220,000,000), but the histogram still warrants a log transformation in order to better visualize the data distribution of film budgets.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(aes(x=budget), data=imdb.2) +
+  geom_histogram(aes(color = I('black'), fill = I('#099DD9'))) +
+  scale_x_log10(breaks = c(10000, 1000000, 20000000, 1000000000), labels = c(10000, 1000000, 20000000, 1000000000))
+
+
+```
+
+The transformation gives us a normal distribution that is slightly negatively skewed. We're able better see the median budget of 21,080,000 and how it's positioned relative to the rest of the data. 
+
+Let's also take a look at the amount of money these films have made in the box office - their gross.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+
+summary(imdb.2$gross)
+
+ggplot(aes(x=gross), data=imdb.2) +
+  geom_histogram(aes(color = I('black'), fill = I('#099DD9'))) +
+  scale_x_continuous(limit=c(0, quantile(imdb.2$gross, probs=0.99, na.rm = TRUE)))
+
+```
+
+Similarly to the budget distribution, removing the top .1% of the data to decrease the positive skew wasn't enough to effectively visualize the distribution. This also calls for a log transformation.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+
+ggplot(aes(x=gross), data=imdb.2) +
+  geom_histogram(aes(color = I('black'), fill = I('#099DD9'))) +
+  scale_x_log10(breaks = c(1000, 10000, 10000000, 60000000, 1000000000), labels = c(1000, 10000, 10000000, 60000000, 1000000000)) 
+
+```
+
+With the transformation, the median gross of 27,280,000 is much clearer. The distribution is normal but negatively skewed.
+
+Next, we'll look at the number of reviews from critics each film received.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+summary(imdb.2$num_critic_for_reviews)
+
+ggplot(aes(x=num_critic_for_reviews), data=imdb.2) +
+  geom_histogram(aes(color = I('black'), fill = I('#099DD9'))) +
+  scale_x_continuous(breaks=seq(0, quantile(imdb.2$num_critic_for_reviews, probs=0.99, na.rm=TRUE), 50), limit=c(0, quantile(imdb.2$num_critic_for_reviews, probs=0.99, na.rm=TRUE)))
+
+```
+
+After removing the top .1% of data, we have a positively skewed distribution of number of reviews from critics. The median is 110 reviews.
+
+Let's now take a look at the duration (the length of film).
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+summary(imdb.2$duration)
+
+ggplot(aes(x=duration), data=imdb.2) +
+  geom_histogram(aes(color = I('black'), fill = I('#099DD9'))) +
+  scale_x_continuous(breaks=seq(0, quantile(imdb.2$duration, probs=0.99, na.rm = TRUE), 10), limit=c(0, quantile(imdb.2$duration, probs=0.99, na.rm = TRUE)))
+
+```
+
+Removed the top 1% of data here as well. No log transformation here needed - we have a normal distribution that gives a clear idea of the distribution of running times. The median duration is 104 minutes.
+
+What countries are these films coming from?
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+
+country_counts <- as.data.frame(sort(table(imdb.2$country)))
+names(country_counts) <- c('country', 'count')
+
+#table(imdb.2$country)
+
+ggplot(aes(x=country, y = count), data = tail(country_counts, 20)) +
+  geom_bar(stat = 'identity') +
+  coord_flip()
+
+
+```
+
+Considering the number of countries (50+), I decided to show a snapshot of the top 20 countries instead.
+
+Unsurprisingly - considering the dominance of Hollywood in international cinema - an overwhelming amount of the films come from the United States, with 3446 films. The second most is the United Kingdom (UK) with 392. Thailand sits at the bottom of this list with 5. If the graph opened up further, we'd see 30+ countries with 5 films or less. 
+
+With the content rating cleaned up from earlier, let's take a look at the count of films for each rating.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+
+summary(imdb.2$content_rating)
+
+rating_counts <- as.data.frame(sort(table(imdb.2$content_rating)))
+names(rating_counts) <- c('content_rating', 'count')
+
+ggplot(aes(x=content_rating, y = count), data = tail(rating_counts, 20)) +
+  geom_bar(stat = 'identity') +
+  coord_flip()
+
+
+
+
+```
+
+I was a bit surprised with this. I would have expected there to be more PG-13/PG films, since by the very nature of their rating, it means the films are more accessible to a wider audience. Only movie goers who are 17 and older - unless they're accompanied by an adult 21 or older - are allowed to watch rated R films. Yet there are much more R films than any other rating. Why this is so would be worth investigating further in a future follow-up to the project.
+
+
+Finally, this dataset contains films across almost a century.Let's create a histogram that gives a sense of the number of films released each year. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+summary(imdb.2$title_year)
+
+ggplot(aes(x=title_year), data=imdb.2) +
+  geom_histogram(aes(color = I('black'), fill = I('#099DD9')), binwidth=1) +
+  scale_x_continuous(breaks=seq(0, max(imdb.2$title_year, na.rm = TRUE), 5))
+
+
+```
+
+A negatively skewed distribution, this isn't surprising to see. Naturally we would see more films produced over time, especially as film grew in popularity as a source of entertainment, business, and a field of study. We have a median year of 2005.
+
+# Univariate Analysis
+
+### What is the structure of your dataset?
+
+The original dataset has 5043 movies in this dataset with 28 variables. However, initial investigation into the dataset's structure revealed that a portion of the database contained data on non-theatrical films, such as made-for-TV films, and the occasional TV series. Removing them from the dataset left us with 4423 films with 28 variables. Most of the dataset is continuous, but some of it is categorical as well.
+
+### What is/are the main features of interest in your dataset?
+
+The main feature of interest in this dataset is the IMDb score. I'm interested to see which features of a film are correlated with IMDb scores. Can we take a look at certain figures and attributes of a film and get an idea of how a film is performing on IMDb? 
+
+### What other features in the dataset do you think will help support your investigation into feature(s) of interest?
+
+The features I believe will might be linked to a film's IMDb score are a film's gross, year of release, number of users voted, and number of reviews from critics.
+
+### Did you create any new variables from existing variables in the dataset?
+
+I did not create any new variables from existing variables in this dataset.
+
+### Of the features you investigated, were there any unusual distributions? Did you perform any operations on the datat to tidy, adjust, or change the form of the data? If so, why did you do this?
+
+A distribution that took me by surprise was the distribution of content ratings - I would not have expected rated R films to take the greatest share.
+
+I log-transformed the histograms for number of voted users, budget, and gross. As each of these charts were skewed, it was difficult to accurately see how most of the data was generally distributed outside of the outliers. Log transforming them gave a much clearer picture of what was happening.
+
+Additionally, I created new data frames for the count plots of content rating and country - a column for each value and a second column for the count of the value. This allowed me to then to easily chart the number of instances of each value, sorted by largest to smallest. 
+
+
+# Bivariate Plots
+
+Let's start off this section with a corr plot. We'll look at the correlation between the 14 continuous variables of the dataset.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+correlations <- cor(imdb.2[,c('imdb_score', 'director_facebook_likes', 'cast_total_facebook_likes', 'num_critic_for_reviews', 'duration', 'num_voted_users', 'actor_1_facebook_likes', 'actor_2_facebook_likes', 'actor_3_facebook_likes', 'movie_facebook_likes', 'facenumber_in_poster', 'title_year', 'gross', 'budget')], use="pairwise.complete.obs")
+
+# Correlation values
+#correlations
+#as.data.frame(correlations)
+
+
+corrplot(correlations, method = c('color'))
+
+
+```
+
+From this visualization, here are some observations we can make:
+
+1. The variables most correlated with IMDb scores are number of critic reviews (0.365), the duration of a film (0.37), and the number of voted users (0.462).
+2. The year a film was released was a weak negative correlation of -0.159. I would have expected a stronger negative correlation - as the number of films increase with the passing of time, so does the number of average/bad films. But by extension, so does the number of good films released each year, so that likely is plays a role in why the effect isn't too large.
+3. There is very little correlation between budget and IMDb score (0.036). Considering the number of expensive blockbuster duds that come out of year, it's no surprise to see that you can't buy your way into quality.
+4. On the flip-side, a film's performance in the box office appears to have a much higher correlation than budget (0.217). There's sense here - better the film, more people will be keen on seeing it.
+
+Other observations not related to IMDb score that caught my interest:
+
+1. The strongest correlation is between the number of Facebook likes for the cast's most popular actor (actor_1_likes) - popularity determined by number of Facebook likes of each cast member - and the total of Facebook likes of the cast (0.947). The number of Facebook likes for the second and third most popular actors in the cast is also fairly strongly correlated with the Facebook likes of the total cast (0.638 and 0.486 respectively).
+2. The number of voted users is fairly strongly correlated with both number of critics reviews (0.613) and gross (0.633), which can be expected. The more a film rakes in the box office, the more popular it is, and thus the more votes. And if a lot of users are voting for it, then chances are so are critics. 
+3. Number of voters also has a fairly strong correlation with the number of Facebook likes a film has, with 0.531. 
+4. There's a positive but weak correlation between duration and number of voted users and duration (0.35). It's possible this is due to the link that they're both positive and weakly correlated with IMDb score. The longer the film, the better the score, and thus the more people who have voted for it.
+
+Let's dive into some of these relationships we just observed with bivariate plots.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+
+ggplot(aes(x=title_year, y = imdb_score), data = imdb.2) +
+  geom_point(alpha=1/5) +
+  geom_smooth()
+
+
+
+```
+
+The negative correlation between imdb_score and title_year that we saw in the corr plot is shown here. As we go forward in time, the median IMDb score appears to drop slightly. Again, this could be due to the fact there are more movies being produced now then there 20+ years. Thus, we're seeing greater instances of bad to average films, and as a result a lower IMDb score median. The downward trend of the line always captures the negative (but weak) correlation.
+
+Let's visualize the relationship between content ratings and IMDb scores and see if there's a pattern.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+content_ratings_medians <- reorder(imdb.2$content_rating, -imdb.2$imdb_score, median)
+
+boxplot(imdb_score ~ content_ratings_medians, data=imdb.2, lwd=1.0, las = 2)
+
+```
+
+The box plot is ordered from the largest median value to the smallest. Two observations:
+
+1. It appears the outdated rating system - X, M, NC-17, GP - have higher median scores than the current rating system. Likely due to the fact there are less films in the IMDb system with the rating system and thus less bad films.
+
+2. Among the crop of films with the current rating system (G, PG, PG-13, R), G has the highest median, while PG-13 has the lowest. But due to the substantial disparity in the number of data points (G only has 112, while R has 2118), the difference shouldn't be overstated. 
+
+3. Across the board, there isn't a sizable difference in median IMDb scores to be found between content ratings.
+
+
+We'll output another box plot to see the relationship between country and IMDb score. Do countries generally tend to perform the same, or are there some countries is noticeably lower or higher IMDb scores relative to the rest of the world?
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+country_medians <- reorder(imdb.2$country, -imdb.2$imdb_score, median)
+boxplot(imdb_score ~ country_medians, data=imdb.2, lwd=1.0, las = 2)
+
+
+```
+
+While it's difficult to see if there's a pattern, we can definitely see that some countries perform better or worse than others.
+
+1. While the US and the UK produce the largest number of films, they do not have the highest median. The UK appears in the middle of the chart, with a median IMDB score of 6.9. The US is the lower third of the chart with a median score of 6.40.
+
+2. The highest median belongs to Kyrgyzstan (8.70), with Iran (8.40) and Libya (8.40) closely behind it. It appears they the countries have a small but high quality number of films.
+
+3. The bottom four countries, and the only countries with less than a 5.0 IMDb median score, are Romania (4.90), Aruba (4.80), Belgium (4.50), and the Bahamas (4.40).
+
+
+Let's move on towards scatter plots for our quantitative data. We'll look at how imdb_score compares with the number of users who have voted towards a film's rating.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(aes(x=num_voted_users, y = imdb_score), data = imdb.2) +
+  geom_point(alpha=1/5) +
+  geom_smooth()
+
+```
+
+Out of all the variables in the data, num_voted_user had the highest correlation with imdb_score with a correlation of 0.462. You can clearly see that positive correlation in the plot. While data points for high scoring films appear across all counts of voted users, they are almost exclusively the only data points shown when the count of users increases. Still, it is interesting you're not seeing more instances of films with high number of voted users but low IMDb scores. It seems that users are more likely to come out in full force to vote for a film the better it is.
+
+We'll see how imdb_score correlate with budget.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+options(scipen = 999)
+
+ggplot(aes(x=budget, y = imdb_score), data = imdb.2) +
+  geom_point(alpha=1/5) +
+  scale_x_continuous(limits = c(0, quantile(imdb.2$budget, probs=0.99, na.rm = TRUE))) +
+  geom_smooth()
+
+```
+
+While there are less instances of films scoring near the 2.5 mark the higher you go up in budget, there does not appear to be a substantial correlation between budget and imdb_score. High scoring and low scoring films come in all types of budgets.
+
+Let's move on to gross and imdb_score.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(aes(x=gross, y = imdb_score), data = imdb.2) +
+  geom_point(alpha=1/5) +
+  scale_x_continuous(limits = c(0, quantile(imdb.2$gross, probs=0.99, na.rm = TRUE))) + 
+  geom_smooth()
+
+```
+
+It appears that gross on the other hand indeed has a stronger (albeit still weak) correlation with imdb_score than budget. This makes sense, since a film's performance in a box office is an outcome of how much movie-goers are enjoying it.
+
+Next, we'll see how the number of reviews received by critics relates with imdb_score.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(aes(x=num_critic_for_reviews, y = imdb_score), data = imdb.2) +
+  geom_point(alpha=1/5) +
+  geom_smooth()
+
+```
+
+Similarly to imdb_score's relationship with num_voted_users, the score goes up as number of reviews from critics goes up as well. A weak but positive correlation (0.365).
+
+Finally, let's visualize the relationship between duration times and imdb scores.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(aes(x=duration, y = imdb_score), data = imdb.2) +
+  geom_point(alpha=1/5) +
+  geom_smooth()
+
+
+```
+
+Duration is also positively correlated (0.37) with IMDb scores. However, there a small group of data points before the 90 minute duration mark of films with small running times but imdb_scores.
+
+# Bivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the investigation. How did the feature(s) of interest vary with other features in this dataset?
+
+IMDb score had a clear, positively correlated relationship with number of critic reviews (0.365), the duration of a film (0.37), and the number of voted users (0.462). While it's not surprising to see that more reviews and more votes can have a noticeable correlation with a film's score, it's surprising  that duration was as well. This would be interesting to investigate in a future update to the project.
+
+The most noticeable negatively correlated (albeit weak) relationship it had with a feature was year of a film's release. IMDb scores dropped over time.
+
+The most interesting plot for me was how median IMDb scores shifted from country to country. My gut instinct before the data was plotted was that the US would be in the higher end of scores, but it actually placed in the lower third of the chart. However, most of these films performing much better than US have significantly smaller sample sizes. It would be interesting to see how this chart would look if we ensured equal number of films from each country.
+
+### Did you observe any interesting relationships between the other features (not the main feature(s) of interest)?
+
+Number of voted users appears to share a weak to fairly strong positive correlation with the most number of variables (6) - IMDb score, number of reviews from critics, gross, duration, and the number of Facebook likes a film has. 
+
+
+### What was the strongest relationship you found?
+
+While I didn't investigate this with a scatter plot, the corr plot analysis at the start revealed that the strongest correlation in the dataset was between the number of Facebook likes for the film's most popular actor and the total Facebook likes of the cast. 
+
+
+# Multivariate Plots
+
+
+We know that duration and number of votes users are positively correlated (0.35), so let's see how adding in duration as color to the num_voted_use/imdb_score plot looks.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+#  scale_colour_gradientn(colours=rainbow(4)) adds color
+
+#Num_Voted_Users / Duration
+
+ggplot(aes(x=num_voted_users, y = imdb_score), data = subset(imdb.2, duration > quantile(duration, 0.01, na.rm=TRUE) & duration < quantile(duration, 0.95, na.rm = TRUE) )) +
+  geom_point(aes(color=duration)) +
+  scale_x_continuous(limits = c(0, quantile(imdb.2$num_voted_users, probs=0.99, na.rm = TRUE))) +
+  scale_colour_gradientn(colours=rainbow(4))
+
+
+```
+
+We can see their correlation here - duration generally increases with number of users who have voted. Additionally, you can see the correlation between duration and imdb_scores.
+
+Let's replace duration with the number of Facebook likes a movie has as the third variable.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+#Num_Voted_Users / Movie Facebook Likes
+
+ggplot(aes(x=num_voted_users, y = imdb_score), data = subset(imdb.2, movie_facebook_likes <= quantile(movie_facebook_likes, 0.95))) +
+  geom_point(aes(color=movie_facebook_likes)) +
+  scale_x_continuous(limits = c(0, quantile(imdb.2$num_voted_users, probs=0.99, na.rm = TRUE))) +
+  scale_colour_gradientn(colours=rainbow(4))
+
+```
+
+We're seeing a similar relationship between Facebook likes and number of voted users (0.531) as the relationship in the chart above. However, the correlation between imdb_score and movie_facebook_likes isn't as strong (0.277148858).
+
+According to the corr plot we made earlier, the number of reviews from critics and gross have a correlation of 0.474. Let's visualize that within our imdb_score / num_critic_for_reviews scatter plot.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(aes(x=num_critic_for_reviews, y = imdb_score), data = subset(imdb.2, gross <= quantile(gross, 0.95, na.rm = TRUE))) +
+  geom_point(aes(color=gross)) +
+  scale_x_continuous(limits = c(0, quantile(imdb.2$num_critic_for_reviews, probs=0.99, na.rm = TRUE))) +
+  scale_colour_gradientn(colours=rainbow(4))
+
+
+```
+
+We can see gross' positively correlated relationship with both num_critic_for_reviews and imdb_score. 
+
+Earlier, we visualized the lack of correlation between budget and imdb_score. Is this relationship constant across all values of content_rating? Let's find out.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(aes(x=budget, y = imdb_score), data = imdb.2) +
+  geom_point() +
+  scale_x_continuous(limits = c(0, quantile(imdb.2$budget, probs=0.99, na.rm = TRUE))) + 
+  geom_smooth() +
+  facet_wrap(~ content_rating, ncol = 3)
+
+
+```
+
+It appears the relationship between budget and imdb_scores is consistent across the content_ratings.
+
+Finally, let's take a look again at the relationship between imdb_score and title_year, but broken down by content_rating.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(aes(x=title_year, y = imdb_score), data = imdb.2) +
+stat_summary(fun.y = mean, geom = 'line', shape = 4) +
+  facet_wrap(~ content_rating)
+
+
+```
+
+Interesting. While the charts are consistent with the aggregated chart from earlier, G's chart stands out a bit. While IMDb scores is clearly still negatively correlated with the passing of time, the magnitude of the decrease appears to be less for G - especially since G's average IMDb score has received a  substantial boost over the last couple years.
+
+#Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the investigation. Were there features that strengthened each other in terms of looking at your feature(s) of interest?
+
+When looking at the relationship between IMDb and number of voted users, we saw number of voted users fairly strong positive correlation with duration and number of Facebook movie likes, and the two features' positive correlation  with imdb_scores.
+
+### Were there any interesting or surprising interactions between features?
+
+What surprised me was breaking down the relationship between title year and imdb_score across each of the content ratings. While they were essentially consistent to what we see in the bi variate analysis, G stood out as it currently had imdb_scores that were closer to the median imdb_scores of the older era of cinema compared to the rest of the ratings.
+
+# Final Plots and Summary
+
+### Plot One
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(aes(x=imdb_score), data=imdb.2) +
+  geom_histogram(aes(color = I('black'), fill = I('#099DD9')), binwidth=0.25) +
+  scale_x_continuous(breaks=seq(0, max(imdb.2$imdb_score), 0.50)) +
+  labs(y = "Count", x = "IMDb Score") +
+  ggtitle("Distribution of IMDb Scores") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+```
+
+### Description One 
+
+This histogram gives a normal but slightly negatively skewed distribution of IMDb scores. The 1.0 to 5.0 portion of the chart contain what are known to be just bad films. Considering that most of these films aren't in this range, a film would have be pretty unpleasant to land here. The 5.0 to 6.5 IMDb score range are films that range from average to pretty good. 6.5 to 8.0 IMDb score range brings you films that go anywhere from "pretty good" to "great". This category of film likely represents most of the films you've loved. The 8.0 and onward range is the creme of the crop. The films that usually land in the IMDb's Top 250. The films that are timeless classics and referenced in any film class - i.e. The Godfather, 2001: A Space Odyssey, Singing in the Rain.
+
+### Plot Two
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(aes(x=num_voted_users, y = imdb_score), data = subset(imdb.2, num_voted_users < quantile(num_voted_users, probs = 0.99, na.rm=TRUE))) +
+  geom_point(alpha=1/5) +
+  geom_smooth() +
+  labs(y = "IMDb Score", x = "Number of Voted Users") +
+  ggtitle("IMDb Score vs. Number of Voted Users") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+### Description Two
+
+Number of voted users has the strongest correlation with IMDb scores, with a Pearson's R of 0.462. In this scatter plot, we clearly see that's the case. Films with high IMDb scores (7.0 and above) exist across the entire spectrum of num_voted_users. However, as num_voted_users increases, the instances of low IMDb scores decrease, along with an increasing average of IMDb scores. 
+
+
+### Plot Three
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(aes(x=title_year, y = imdb_score), data = imdb.2) +
+stat_summary(fun.y = mean, geom = 'line', shape = 4) +
+  facet_wrap(~ content_rating) +
+  labs(y = "IMDb Score", x = "Year of Release") +
+  ggtitle("IMDb Score vs. Year of Release By Content Rating") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+```
+
+### Description Three
+
+While our Bivariate Analysis between IMDb score and the year of a film's release revealed a negative correlation, breaking down the trend across content ratings revealed one stand-out insight. While G rated films generally saw median IMDb scores lower than any of the other ratings, the last several years have seen G rated films with the highest median IMDb scores. Additionally, while films saw a peak in median scores early on in their history that films today haven't been able to match, G rated film's recent median scores are getting close to those scores of the past. Are we seeing a renaissance of high quality G rated films at the moment?
+
+
+# Reflection
+
+The original dataset had 5043 movies in this dataset with 28 variables. However, initial exploration revealed there were non-theatrical films in the dataset, such as made-for-TV films and TV series. We were left with 4423 films and 28 variables after removing them. 
+
+I began the exploration with a simple univariate analysis, to look at the structure and distribution of the film features. Occasionally I had to apply a log transformation in order to develop a clearer picture of the distribution. Moving forward, I determined that the IMDb score would be the main feature of interest in this project. Meaning, I wanted to see what variables correlated with a high or low IMDb score.
+
+In the following Bivariate Analysis section, I then compared the relationship between IMDb scores and the features I highlighted in the univariate section. The most important findings were that IMDb scores had weak to fairly strong positive correlations with number of reviews from critics, duration, and number of users who voted. 
+
+Finally, in our Multivariate Analysis section, I decided to see how certain features related to one another while looking at my main feature of interest (imdb_scores). The one interesting finding in this section was finding out that while IMDb scores and the year of a film's release was still negative across all content_ratings, rated G films currently had median IMDb scores higher than the rest of the categories and close to the median scores of older films.
+
+In the future, there are a variety of ways this project could be improved on or expanded:
+
+1. Earlier in my analysis, I noticed that there were a lot more rated R films than PG 13, and wondered why this was so. Outside research led me to a 2013 article from the The Wrap that discussed this exact phenomenon - [TheWrap: If PG-13 Is the Moneymaker, Why Is Hollywood Cranking Out So Many R-Rated Movies?](http://www.thewrap.com/pg-13-movies-dominated-2013-box-office-r-rated-comedies-clicked/) Two main reasons popped up: 1. Rated R films allow full creativity and thus tend to be the award winners. PG-13 films are made to generate big time money. 2. Rated R films not performing too well in the box office aren't always an overt concern because Video-on-Demand/streaming is where the real revenue is. With this in mind, I'd love to scrape data on VOD sales and awards won for each film and see if the data backs it up.
+
+2. I'd approach this project with building a predictive model for IMDb scores in mind. As most of the variables I looked at in this project weren't variables that are available prior to a film's release (i.e. gross, number of voted users), I'd take into account different variables, such as movie_facebook_likes. 
+
+3. I'd be interesting to see demographic breakdowns of a film's cast and director (and even include writer, producer, etc.). Not only would it give us a sense of demographic representation in cinema over time, but we can then find relationships between demographics and awards, genres, box office performance, and more. 
