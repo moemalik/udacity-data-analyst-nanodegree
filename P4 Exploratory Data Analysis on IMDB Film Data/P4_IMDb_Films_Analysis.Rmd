@@ -1,6 +1,8 @@
 ---
 date: "March 19, 2017"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 IMDb Film Data Analysis by Moe Malik
@@ -411,9 +413,8 @@ ggplot(aes(x=num_voted_users, y = imdb_score), data = imdb.2) +
 Out of all the variables in the data, num_voted_user had the highest correlation with imdb_score with a correlation of 0.462. You can clearly see that positive correlation in the plot. While data points for high scoring films appear across all counts of voted users, they are almost exclusively the only data points shown when the count of users increases. Still, it is interesting you're not seeing more instances of films with high number of voted users but low IMDb scores. It seems that users are more likely to come out in full force to vote for a film the better it is.
 
 We'll see how imdb_score correlate with budget.
-```{r echo=FALSE, message=FALSE, warning=FALSE}
 
-options(scipen = 999)
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 
 ggplot(aes(x=budget, y = imdb_score), data = imdb.2) +
   geom_point(alpha=1/5) +
